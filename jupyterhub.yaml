@@ -19,7 +19,6 @@ hub:
   allowNamedServers: true
   namedServerLimitPerUser: 5
   networkPolicy:
-    # https://github.com/dask/helm-chart/issues/142#issuecomment-730633411
     enabled: False
   #   allowedIngressPorts:
   #     - https
@@ -51,7 +50,7 @@ singleuser:
     - display_name: "GPU Server"
       description: "Spawns a notebook server with access to a GPU"
       kubespawner_override:
-        image: docker pull quay.io/jupyter/pytorch-notebook:cuda12-python-3.11
+        image: quay.io/jupyter/pytorch-notebook:cuda12-python-3.11
         extra_resource_limits:
           nvidia.com/gpu: "1"
         environment:
