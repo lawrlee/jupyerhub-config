@@ -1,0 +1,104 @@
+hub:
+  db:
+    pvc:
+      storageClassName: ebs-sc
+  config:
+    GoogleOAuthenticator:
+      client_id: 106************-************.apps.googleusercontent.com
+      client_secret: ************
+      oauth_callback_url: https://jupyterhub.insitro.com/hub/oauth_callback
+      hosted_domain:
+        - insitro.com
+      login_service: "JupyterHub"
+    JupyterHub:
+      authenticator_class: google
+    Authenticator:
+      admin_users:
+        - lawrence
+        - alice
+  allowNamedServers: true
+  namedServerLimitPerUser: 5
+  networkPolicy:
+    # https://github.com/dask/helm-chart/issues/142#issuecomment-730633411
+    enabled: False
+  #   allowedIngressPorts:
+  #     - https
+
+singleuser:
+  serviceAccountName: jupyter-user-policies
+  startTimeout: 300
+  lifecycleHooks:
+    postStart:
+      exec:
+        command:
+          - "sh"
+          - "-c"
+          - >
+            cp -r /tmp/.ssh /home/jovyan;
+            chmod 600 -R /home/jovyan/.ssh/id_*;
+            ln -sfv /home/shared /home/jovyan;
+  cpu:
+    guarantee: 0.5
+    limit: 2
+  memory:
+    guarantee: 1G
+    limit: 4G
+  profileList:
+    - display_name: "Data Science Notebook (0.5cpu / 1Gb)"
+      description: "Default small instance notebook"
+      kubespawner_override:
+        image: quay.io/jupyter/datascience-notebook:2024-05-27
+    - display_name: "GPU Server"
+      description: "Spawns a notebook server with access to a GPU"
+      kubespawner_override:
+        image: docker pull quay.io/jupyter/pytorch-notebook:cuda12-python-3.11
+        extra_resource_limits:
+          nvidia.com/gpu: "1"
+        environment:
+          NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
+          LD_LIBRARY_PATH: "/srv/conda/envs/notebook/lib"
+          TF_ENABLE_ONEDNN_OPTS: "0"
+  defaultUrl: "/lab"
+
+  extraEnv:
+    JUPYTERHUB_SINGLEUSER_APP: "jupyter_server.serverapp.ServerApp"
+
+  cloudMetadata:
+    blockWithIptables: false
+
+  storage:
+    dynamic:
+      storageClass: efs-homedirs-sc
+      pvcNameTemplate: "claim-{username}"
+      storageAccessModes:
+        - ReadWriteMany
+
+    extraVolumes:
+      - name: jupyterhub-shared
+        persistentVolumeClaim:
+          claimName: efs-shared-pvc
+    extraVolumeMounts:
+      - name: jupyterhub-shared
+        mountPath: /home/shared
+
+prePuller:
+  continuous:
+    # NOTE: if used with a Cluster Autoscaler, also add user-placeholders
+    enabled: true
+
+proxy:
+  https:
+    enabled: true
+    type: offload
+  service:
+    disableHttpPort: true
+    annotations:
+      # Certificate ARN
+      service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "arn:aws:acm:us-west-2:***:certificate/********-****-****-****-************"
+      # The protocol to use on the backend, we use TCP since we're using websockets
+      service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "tcp"
+      # Which ports should use SSL
+      service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "https"
+      service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "3600"
+      service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+      external-dns.alpha.kubernetes.io/hostname: jupyterhub.insitro.com
